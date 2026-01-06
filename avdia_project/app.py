@@ -28,7 +28,7 @@ def get_latest_game():
     }
     
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
+        response = requests.get(url, headers=headers, params=params, timeout=90)
         response.raise_for_status()
         
         data = response.json()
