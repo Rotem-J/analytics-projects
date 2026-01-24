@@ -1,6 +1,26 @@
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
+
+def data_prep(df):
+    df.rename(columns={
+        'Unnamed: 5': 'Home/Away',
+        'GS': 'Games Started',
+        'Rk': 'Rank',
+        'Gcar': 'Games_Career',
+        'Gtm': 'Games_Team',
+        'GS': 'Games_Started',
+    }, inplace=True)
+    df.loc[df['Home/Away'] == '@', 'Home/Away'] = 'Away'
+    df.loc[df['Home/Away'] != 'Away', 'Home/Away'] = 'Home'
+    df['Home/Away_num'] = np.where(df['Home/Away'] == 'Away', 0, 1)
+    df[['Result_type', 'Score']] = df['Result'].str.split(',', expand=True)
+    df[['Team_Score', 'Opponent_Score']] = df['Score'].str.split('-', expand=True)
+    df['Win_lose_num'] = np.where(df['Result_type'] == 'W', 1, 0)
+    df['Games_Started_num'] = np.where(df['Games_Started'] == '*', 1, 0)
+    df['Games_Started_str'] = np.where(df['Games_Started'] == '*', 'Yes', 'No')
+    return df
 
 def get_deni_latest_game():
     """
@@ -39,7 +59,7 @@ def get_deni_latest_game():
         print(f"📊 סה\"כ {len(df)} משחקים בעונה")
         
         # קח את המשחק האחרון (השורה האחרונה)
-        latest_game = df.iloc[-1]
+        latest_game = df.iloc[[-1]]
         
         # בדוק אם דני שיחק (יש דקות משחק)
         if pd.isna(latest_game['MP']) or latest_game['MP'] == '':
@@ -63,14 +83,16 @@ def get_deni_latest_game():
         print(f"🎯 3P: {latest_game.get('3P', '0')}/{latest_game.get('3PA', '0')}")
         print(f"🎪 FT: {latest_game.get('FT', '0')}/{latest_game.get('FTA', '0')}")
         print("="*70)
-        
-        # החזר את כל השורה כ-dictionary
-        game_dict = latest_game.to_dict()
-        
+
+        latest_game = data_prep(latest_game)
+
         print("\n✅ הצלחה! כל הנתונים נמשכו")
-        print(f"\n📋 עמודות זמינות: {list(game_dict.keys())}")
+        # רשימת עמודות שברצוננו להציג
+        print(latest_game.columns.tolist())
+
+        last_game = latest_game.to_csv()
         
-        return game_dict
+        return last_game
         
     except requests.exceptions.RequestException as e:
         print(f"❌ שגיאת רשת: {e}")
@@ -81,13 +103,13 @@ def get_deni_latest_game():
         traceback.print_exc()
         return None
 
+
 if __name__ == "__main__":
     # הרץ את הפונקציה
     game_data = get_deni_latest_game()
     
     if game_data:
         print("\n" + "="*70)
-        print("🎉 כל הנתונים (JSON):")
+        print("🎉 כל הנתונים (ל-CSV):")
         print("="*70)
-        for key, value in game_data.items():
-            print(f"{key}: {value}")
+        print(game_data)
