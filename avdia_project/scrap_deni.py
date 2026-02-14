@@ -1,30 +1,13 @@
-import numpy as np
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-
-def data_prep(df):
-    df.rename(columns={
-        'Unnamed: 5': 'Home/Away',
-        'GS': 'Games Started',
-        'Rk': 'Rank',
-        'Gcar': 'Games_Career',
-        'Gtm': 'Games_Team',
-        'GS': 'Games_Started',
-    }, inplace=True)
-    df.loc[df['Home/Away'] == '@', 'Home/Away'] = 'Away'
-    df.loc[df['Home/Away'] != 'Away', 'Home/Away'] = 'Home'
-    df['Home/Away_num'] = np.where(df['Home/Away'] == 'Away', 0, 1)
-    df[['Result_type', 'Score']] = df['Result'].str.split(',', expand=True)
-    df[['Team_Score', 'Opponent_Score']] = df['Score'].str.split('-', expand=True)
-    df['Win_lose_num'] = np.where(df['Result_type'] == 'W', 1, 0)
-    df['Games_Started_num'] = np.where(df['Games_Started'] == '*', 1, 0)
-    df['Games_Started_str'] = np.where(df['Games_Started'] == '*', 'Yes', 'No')
-    return df
+import os
+import numpy as np
 
 def get_deni_latest_game():
     """
     מושך את המשחק האחרון של דני אבדיה עם כל הנתונים
+    מחזיר DataFrame עם שורה אחת
     """
     url = "https://www.basketball-reference.com/players/a/avdijde01/gamelog/2026"
     
@@ -58,41 +41,33 @@ def get_deni_latest_game():
         
         print(f"📊 סה\"כ {len(df)} משחקים בעונה")
         
-        # קח את המשחק האחרון (השורה האחרונה)
-        latest_game = df.iloc[[-1]]
+        # קח את המשחק האחרון (השורה האחרונה) כ-DataFrame
+        latest_game_df = df.iloc[[-1]]  # שים לב ל-[[-1]] כדי לשמור על DataFrame
         
         # בדוק אם דני שיחק (יש דקות משחק)
-        if pd.isna(latest_game['MP']) or latest_game['MP'] == '':
+        mp_value = latest_game_df['MP'].values[0]
+        if pd.isna(mp_value) or mp_value == '':
             print("⚠️  דני לא שיחק במשחק האחרון")
             return None
         
         # הדפס את הנתונים החשובים
+        game = latest_game_df.iloc[0]
         print("\n" + "="*70)
         print("📊 המשחק האחרון של דני אבדיה:")
         print("="*70)
-        print(f"📅 תאריך: {latest_game.get('Date', 'N/A')}")
-        print(f"🏀 יריב: {latest_game.get('Opp', 'N/A')}")
-        print(f"🏆 תוצאה: {latest_game.get('Unnamed: 5', 'N/A')} ({latest_game.get('Unnamed: 6', 'N/A')})")
-        print(f"⏱️  דקות: {latest_game.get('MP', '0')}")
-        print(f"🎯 נקודות: {latest_game.get('PTS', '0')}")
-        print(f"📦 ריבאונדים: {latest_game.get('TRB', '0')}")
-        print(f"🤝 אסיסטים: {latest_game.get('AST', '0')}")
-        print(f"🛡️  גניבות: {latest_game.get('STL', '0')}")
-        print(f"🚫 חסימות: {latest_game.get('BLK', '0')}")
-        print(f"📈 FG: {latest_game.get('FG', '0')}/{latest_game.get('FGA', '0')}")
-        print(f"🎯 3P: {latest_game.get('3P', '0')}/{latest_game.get('3PA', '0')}")
-        print(f"🎪 FT: {latest_game.get('FT', '0')}/{latest_game.get('FTA', '0')}")
+        print(f"📅 תאריך: {game.get('Date', 'N/A')}")
+        print(f"🏀 יריב: {game.get('Opp', 'N/A')}")
+        print(f"⏱️  דקות: {game.get('MP', '0')}")
+        print(f"🎯 נקודות: {game.get('PTS', '0')}")
+        print(f"📦 ריבאונדים: {game.get('TRB', '0')}")
+        print(f"🤝 אסיסטים: {game.get('AST', '0')}")
         print("="*70)
-
-        latest_game = data_prep(latest_game)
-
-        print("\n✅ הצלחה! כל הנתונים נמשכו")
-        # רשימת עמודות שברצוננו להציג
-        print(latest_game.columns.tolist())
-
-        last_game = latest_game.to_csv()
         
-        return last_game
+        print("\n✅ הצלחה! הנתונים נמשכו כ-DataFrame")
+        print(f"\n📋 עמודות: {list(latest_game_df.columns)}")
+        print(f"\n📊 DataFrame shape: {latest_game_df.shape}")
+        
+        return latest_game_df
         
     except requests.exceptions.RequestException as e:
         print(f"❌ שגיאת רשת: {e}")
@@ -102,14 +77,56 @@ def get_deni_latest_game():
         import traceback
         traceback.print_exc()
         return None
+    
+def chack_if_last_game_in_history(latest_game_df, history_df):
+    if latest_game_df is None:
+        print("⚠️  אין נתונים למשחק האחרון, לא ניתן לבדוק בהיסטוריה")
+        return False
+    
+    latest_date = latest_game_df['Date'].values[0]
+    
+    if latest_date in history_df['Date'].values:
+        print("✅ המשחק האחרון כבר קיים בהיסטוריה")
 
+    else:
+        print("⚠️  המשחק האחרון לא נמצא בהיסטוריה, ייתכן שזה משחק חדש")
+        return False
+
+def clean_and_process_data(last_game_df):
+    last_game_df.rename(columns={
+        'Unnamed: 5': 'Home/Away',
+        'GS': 'Games Started',
+        'Rk': 'Rank',
+        'Gcar': 'Games_Career',
+        'Gtm': 'Games_Team',
+        'GS': 'Games_Started',
+    }, inplace=True)
+    last_game_df.loc[last_game_df['Home/Away'] == '@', 'Home/Away'] = 'Away'
+    last_game_df.loc[last_game_df['Home/Away'] != 'Away', 'Home/Away'] = 'Home'
+    last_game_df['Home/Away_num'] = np.where(last_game_df['Home/Away'] == 'Away', 0, 1)
+    last_game_df[['Result_type', 'Score']] = last_game_df['Result'].str.split(',', expand=True)
+    last_game_df[['Team_Score', 'Opponent_Score']] = last_game_df['Score'].str.split('-', expand=True)
+    last_game_df['Win_lose_num'] = np.where(last_game_df['Result_type'] == 'W', 1, 0)
+    last_game_df['Games_Started_num'] = np.where(last_game_df['Games_Started'] == '*', 1, 0)
+    last_game_df['Games_Started_str'] = np.where(last_game_df['Games_Started'] == '*', 'Yes', 'No')
+    return last_game_df
 
 if __name__ == "__main__":
     # הרץ את הפונקציה
-    game_data = get_deni_latest_game()
+    latest_game_df = get_deni_latest_game()
     
-    if game_data:
+    if latest_game_df is not None:
         print("\n" + "="*70)
-        print("🎉 כל הנתונים (ל-CSV):")
+        print("🎉 ה-DataFrame המלא:")
         print("="*70)
-        print(game_data)
+        print(latest_game_df)
+        
+
+obs_dir = os.path.dirname(os.path.abspath(__file__))
+csv_path = os.path.join(obs_dir, 'processed_seasons_data.csv')
+history = pd.read_csv(csv_path)
+is_latest_game_in_history = chack_if_last_game_in_history(latest_game_df, history)
+if not is_latest_game_in_history:
+    latest_game_df = clean_and_process_data(latest_game_df)
+    updated_history = pd.concat([history, latest_game_df], ignore_index=True)
+    updated_history.to_csv(csv_path, index=False)
